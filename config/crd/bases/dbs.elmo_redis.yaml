@@ -15,7 +15,13 @@ spec:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: Redis is the Schema for the redis API
+        description: 'Redis - nosol database. This resource is redis as you ask, can have multiple replicas, backups.
+          can be persistent or cache and more accourding to your wises.
+          If there is something you would like to have to change contact us and we might add it to the next version of this resource :). More Info: https://github.com/MaayanMordehai/redis-operator'
+        required:
+        - apiVersion
+        - kind
+        - spec
         properties:
           apiVersion:
             description: 'APIVersion defines the versioned schema of this representation
@@ -32,11 +38,253 @@ spec:
           spec:
             description: Spec defines the desired state of Redis
             type: object
-            x-kubernetes-preserve-unknown-fields: true
+            required:
+            - replicas
+            - defaultUserPassword
+            - persistent
+            - parameters
+            - requests
+            - name
+            properties:
+              name:
+                description: Name for the redis, minimum 2 characters, maximum 100 character with k8s names assertions.
+                type: string
+                pattern: '[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*'
+                minLength: 2
+                maxLength: 100
+              version:
+                description: Redis version, default is the latest supported. current supported versions are 6.2
+                type: string
+                enum:
+                - "6.2"
+                default: "6.2"
+              replicas:
+                description: The amount of redis replicas, If set to more than 1 redis will be persistent.
+                type: integer
+                enum:
+                - 1
+                - 3
+                - 5
+                - 7
+              defaultUserPassword:
+                description: The password to set to user default in your redis database.
+                type: string
+                minLength: 8
+                maxLength: 512
+              persistent:
+                description: persistent describes properties related to persistence.
+                type: object
+                required:
+                - apply
+                properties:
+                  apply:
+                    description: Do you want your redis to be persistent will be ignored when set to false with more than 1 replicas, default is true.
+                    type: boolean
+                    default: yes
+                  storageSize:
+                    description: 'The storage size for each of the redis replicas.'
+                    type: string
+                    pattern: '^([+-]?[0-9.]+)([eEinumkKMGTP]*[-+]?[0-9]*)$'
+                  storageClass:
+                    description: 'The storage class'
+                    type: string
+              parameters:
+                description: 'Parameters for the redis.conf file, if you want to change paranater that is not in the options,
+                  contact us and we might add it to the operator :)'
+                type: object
+                required:
+                - maxmemory
+                properties:
+                  maxmemory:
+                    description: maxmemory parameter in redis. read redis.conf documention.
+                    type: string
+                    pattern: '[0-9]+(k|kb|m|mb|g|gb)'
+                  port:
+                    description: port for redis.
+                    type: integer
+                    default: 6379
+                    minimum: 1
+                    maximum: 65535
+                  loglevel:
+                    description: The loglevel for the redis log. default notice. read redis.conf documention.
+                    type: string
+                    default: notice
+                    enum:
+                    - debug
+                    - verbose
+                    - notice
+                    - warning
+              requests:
+                description: The request for each of the redis containers
+                type: object
+                required:
+                - cpu
+                - memory
+                properties:
+                  cpu:
+                    description: Cpu reugest
+                    type: string
+                    pattern: '^(\d+m|\d+(\.\d{1,3})?)$'
+                  memory:
+                    description: Memory reugest
+                    type: string
+                    pattern: '^(\d+(e\d+)?|\d+(\.\d+)?(e\d+)?[EPTGMK]i?)$'
+              limits:
+                description: The limits for each of the redis containers
+                type: object
+                properties:
+                  cpu:
+                    description: Cpu limit
+                    type: string
+                    pattern: '^(\d+m|\d+(\.\d{1,3})?)$'
+                  memory:
+                    description: Memory limit
+                    type: string
+                    pattern: '^(\d+(e\d+)?|\d+(\.\d+)?(e\d+)?[EPTGMK]i?)$'
+              sentinel:
+                description: Sentinel gives the ability to do failover in redis replica. The following properties are for sentinel (ignored when replicas < 1)
+                type: object
+                required:
+                - requests
+                - password
+                properties:
+                  password:
+                    description: The password to the sentinel instances
+                    type: string
+                    minLength: 8
+                    maxLength: 512
+                  port:
+                    description: The port to sentinels
+                    type: integer
+                    default: 26379
+                    minimum: 1
+                    maximum: 65535
+                  requests:
+                    description: The request for each of the sentinel containers
+                    type: object
+                    required:
+                    - cpu
+                    - memory
+                    properties:
+                      cpu:
+                        description: Cpu request
+                        type: string
+                        pattern: '^(\d+m|\d+(\.\d{1,3})?)$'
+                      memory:
+                        description: Memory request
+                        type: string
+                        pattern: '^(\d+(e\d+)?|\d+(\.\d+)?(e\d+)?[EPTGMK]i?)$'
+                  limits:
+                    description: The limits for each of the sentinel containers
+                    type: object
+                    properties:
+                      cpu:
+                        description: Cpu limit
+                        type: string
+                        pattern: '^(\d+m|\d+(\.\d{1,3})?)$'
+                      memory:
+                        description: Memory limit
+                        type: string
+                        pattern: '^(\d+(e\d+)?|\d+(\.\d+)?(e\d+)?[EPTGMK]i?)$'
+              backup:
+                description: backup describes the backups properties the user wants
+                type: object
+                required:
+                - create
+                default:
+                  create: no
+                properties:
+                  create:
+                    description: Do you want your redis to have backups? default false
+                    type: boolean
+                    default: no
+                  schedule:
+                    description: 'The schedule for the backup jobs, crontab format, default 0 1 */7 * *'
+                    type: string
+                    default: '0 1 */7 * *'
+                    pattern: '^(\d+|\*)(/\d+)?(\s+(\d+|\*)(/\d+)?){4}$'
+                  retentionPolicyInDays:
+                    description: The retention policy - how long will you be able to restore? o less then 1 day, 1. less then 2 days ..
+                    type: integer
+                    default: 7
+                    minimum: 0
+                  storageSize:
+                    description: The storage size for the backups.
+                    type: string
+                    pattern: '^([+-]?[0-9.]+)([eEinumkKMGTP]*[-+]?[0-9]*)$'
+                  requests:
+                    description: The request for the restore pod container
+                    type: object
+                    properties:
+                      cpu:
+                        description: Cpu request
+                        type: string
+                        pattern: '^(\d+m|\d+(\.\d{1,3})?)$'
+                      memory:
+                        description: Memory request
+                        type: string
+                        pattern: '^(\d+(e\d+)?|\d+(\.\d+)?(e\d+)?[EPTGMK]i?)$'
+                  limits:
+                    description: The limits for the restore pod container
+                    type: object
+                    properties:
+                      cpu:
+                        description: Cpu limit
+                        type: string
+                        pattern: '^(\d+m|\d+(\.\d{1,3})?)$'
+                      memory:
+                        description: Memory limit
+                        type: string
+                        pattern: '^(\d+(e\d+)?|\d+(\.\d+)?(e\d+)?[EPTGMK]i?)$'
+                  restorePod:
+                    description: Restore pod is for you to be able to restore and see your backups in confort :)
+                    type: object
+                    required:
+                    - create
+                    - mapPvcs
+                    default:
+                      create: no
+                    properties:
+                      create:
+                        description: Do you want to create restore pod? default false.
+                        type: boolean
+                        default: no
+                      mapPvcs:
+                        description: PVCs to map to the restore pod, should be on the same namespace.
+                        type: array
+                        default: []
+                        items:
+                          type: string
+                          pattern: '[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*'
+                      requests:
+                        description: The request for the restore pod container
+                        type: object
+                        properties:
+                          cpu:
+                            description: Cpu request
+                            type: string
+                            pattern: '^(\d+m|\d+(\.\d{1,3})?)$'
+                          memory:
+                            description: Memory request
+                            type: string
+                            pattern: '^(\d+(e\d+)?|\d+(\.\d+)?(e\d+)?[EPTGMK]i?)$'
+                      limits:
+                        description: The limits for the restore pod container
+                        type: object
+                        properties:
+                          cpu:
+                            description: Cpu limit
+                            type: string
+                            pattern: '^(\d+m|\d+(\.\d{1,3})?)$'
+                          memory:
+                            description: Memory limit
+                            type: string
+                            pattern: '^(\d+(e\d+)?|\d+(\.\d+)?(e\d+)?[EPTGMK]i?)$'
           status:
             description: Status defines the observed state of Redis
             type: object
             x-kubernetes-preserve-unknown-fields: true
+            # TODO: write the fields for the operator ? 
         type: object
     served: true
     storage: true

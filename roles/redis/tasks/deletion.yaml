@@ -1,0 +1,82 @@
+---
+- name: Deleting Sentinel Parameters ConfigMap
+  k8s:
+    state: absent
+    kind: Configmap
+    name: "{{ sentinel_conf_configmap.name }}"
+    namespace: "{{ meta.namespace }}"
+    api_version: "{{ sentinel_conf_configmap.api_version }}"
+  when: replicas <= 1
+
+- name: Deleting Services 
+  k8s:
+    kind: Service
+    state: absent
+    name: "{{ service.name }}-{{ item }}"
+    namespace: "{{ meta.namespace }}"
+    api_version: "{{ service.api_version }}"
+  loop: "{{ range(replicas|int, max_replicas|int - 1)|list }}"
+
+# Delete the statefulset and recreate it:
+# 1. when scaling from 1 to more - to avoid split brain
+#    standalone does not have sentinel so the next redis that goes up goes as master too and there are 2 masters until the first pod terminates
+# 2. when changing from persistent to cache - because you can't change existing statefulset persistent volumes
+# 3. when scaling from more then 1 to 1 - TODO: change this to be from more then 1 to only 1 cache if possiable
+# 4. when redis port is changed
+# 5. when sentinel port is changed
+# Its needed when the port changed because we don't want to allow split brain and the init-redis-sentinel image does not support diffrent ports in the instances
+- name: Deleting the current statefulset
+  k8s:
+    kind: Statefulset
+    name: "{{ statefulset.name }}"
+    namespace: "{{ meta.namespace }}"
+    api_version: "{{ statefulset.api_version }}"
+    state: absent
+  when: "(status.replicas is defined and ((status.replicas|int == 1 and replicas > 1) or \
+                                          (status.replicas|int > 1 and replicas == 1))) or \
+         (status.persistent is defined and (status.persistent|bool != persistent.apply|bool)) or \
+         (status.port is defined and status.port|int != parameters.port|int) or \
+         (status.sentinel.port is defined and status.sentinel.port|int != sentinel.port|int)"
+
+- name: Deleting Backup CronJob
+  k8s:
+    kind: CronJob
+    state: absent
+    name: "{{ backup_cronjob.name }}"
+    namespace: "{{ meta.namespace }}"
+    api_version: "{{ backup_cronjob.api_version }}"
+  when: (not backup.create|bool) or (not persistence.apply|bool and redis.replicas == 1)
+
+- name: Deleting restore deployment
+  k8s:
+    kind: Deployment
+    state: absent
+    name: "{{ restore_deployment.name }}"
+    namespace: "{{ meta.namespace }}"
+    api_version: "{{ restore_deployment.api_version }}"
+  when: (not backup.restore_pod.create|bool) or (not backup.create|bool)
+# TODO: think if restore pod should be deleted when backup no...
+# also what about when they are yes but redis is cache ??
+
+- name: Removing Backup Pvc
+  k8s:
+    kind: PersistentVolumeClaim
+    state: absent
+    name: "{{ backup_pvc.name }}"
+    namespace: "{{ meta.namespace }}"
+    api_version: "{{ backup_pvc.api_version }}"
+  when: not backup.create|bool
+# TODO: think when to delete it ... 
+
+- name: Removing Data Pvcs
+  k8s:
+    kind: PersistentVolumeClaim
+    state: absent
+    name: "{{ data_pvc.name }}-{{ item }}"
+    namespace: "{{ meta.namespace }}"
+    api_version: "{{ data_pvc.api_version }}"
+  when: (item|int != 0) or (not persistent.apply|bool and redis.replicas <= 1)
+  loop: "{{ range(replicas|int, max_replicas|int - 1)|list }}"
+# On Scale down of replicas we remove the unnessary pvcs, without removing the pvc with index 0 when persistent is enabled.
+# For now the replicas will never be 0 (the crd won't allow it) but this is for the futuer where we might add replicas 0.
+

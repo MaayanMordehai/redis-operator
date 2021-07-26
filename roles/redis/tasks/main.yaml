@@ -1,0 +1,21 @@
+---
+
+# TODO: Checks for everything - creation and deletion stuff
+
+- import_tasks: deletion.yaml
+
+- import_tasks: creation.yaml
+
+- name: Setting the needed parameters in status
+  k8s_status:
+    kind: "{{ kind }}"
+    name: "{{ meta.name }}"
+    namespace: "{{ meta.namespace }}"
+    api_version: "{{ api_version }}"
+    status:
+      replicas: "{{ replicas }}"
+      persistent: "{{ ((replicas > 1) or replicas == 1 and persistent.apply|bool) | ternary('yes', 'no') }}"
+      port: "{{ parameters.port }}"
+      sentinel:
+        port: "{{ sentinel.port }}"
+

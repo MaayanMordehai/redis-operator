@@ -1,0 +1,75 @@
+kind: CronJob
+apiVersion: {{ backup_cronjob.api_version }}
+metadata:
+  name: "{{ backup_cronjob.name }}"
+  namespace: "{{ meta.namespace }}"
+  labels:
+    app: "{{ name }}"
+    cr: "{{ meta.name }}"
+    operator: "{{ kind }}"
+    action: backup
+spec:
+  schedule: "{{ backup.schedule }}"
+  successfulJobsHistoryLimit: 1
+  failedJobHistoryLimit: 1
+  concurrencyPolicy: "Forbid"
+  jobTemplate:
+    spec:
+      completions: 1
+      backoffLimits: 5
+      template:
+        metadata:
+          labels:
+            app: "{{ name }}"
+            cr: "{{ meta.name }}"
+        spec:
+          containers:
+          - name: "{{ backup_cronjob.name }}"
+            resources:
+              requests:
+                cpu: {{ backup.requests.cpu }}
+                memory: {{ backup.requests.memory }}
+{% if backup.limits.cpu is defined or backup.limits.memory is defined %}
+              limits:
+{% if backup.limits.cpu is defined %}
+                cpu: {{ backup.limits.cpu }}
+{% endif %}
+{% if backup.limits.memory is defined %}
+                memory: {{ backup.limits.memory }}
+{% endif %}
+{% endif %}
+            env:
+            - name: REDIS_SERVICE
+              value: "{{ backup_cronjob.backup_from_pod }}"
+            - name: REDIS_VOLUME
+              value: "/redis"
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: "{{ secret.name }}"
+                  key: "{{ secret.redis_password_field }}"
+            - name: BACKUP_VOLUME
+              value: "/backup"
+            - name: REDIS_PORT
+              value: "{{ parameters.port }}"
+            - name: RETENTION_POLICY_DAYS
+              value: "{{ backup.retention_policy_in_days }}"
+            image: "{{ images.backup }}"
+            volumeMounts:
+            - name: "{{ backup_pvc.name }}"
+              mountPath: "/backup"
+            - name: "{{ backup_cronjob.backup_from_pod }}"
+              mountPath: "/redis"
+            imagePullPolicy: Always
+            securityContext:
+              runAsUser: 999
+              runAsGroup: 999
+          restartPolicy: OnFailure
+          volumes:
+          - name: "{{ backup_pvc.name }}"
+            persistentVolumeClaim:
+              claimName: "{{ backup_pvc.name }}"
+          - name: "{{ backup_cronjob.backup_from_pod }}"
+            persistentVolumeClaim:
+              claimName: "{{ backup_cronjob.backup_from_pod_pvc }}"
+           

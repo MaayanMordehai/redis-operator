@@ -1,0 +1,15 @@
+apiVersion: {{ sentinel_conf_configmap.api_version }}
+kind: ConfigMap
+metadata:
+  namespace: "{{ meta.namespace }}"
+  name: "{{ sentinel_conf_configmap.name }}"
+  labels:
+    app: "{{ name }}"
+    cr: "{{ meta.name }}"
+    operator: "{{ kind }}"
+    action: main
+data:
+  sentinel.conf: |
+    sentinel down-after-milliseconds {{ name }} 30000
+    sentinel failover-timeout {{ name }} 180000
+    bind 0.0.0.0

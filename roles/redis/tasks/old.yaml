@@ -1,0 +1,119 @@
+---
+- name: Creating Redis database Secret
+  k8s:
+    state: present
+    apply: yes
+    template: 'redis-secret.yaml'
+
+# creating pvc for each redis pod
+# for only one redis there is cache option
+- name: Creating Redis PVC
+  k8s:
+    state: present
+    apply: yes
+    template: 'redis-pvc.yaml'
+  loop: "{{ range(0, [replicas|int - 1, 0]|max)|list }}"
+  when: persistent.apply|bool or replicas > 1
+
+- name: Creating Redis Parameters Configtap
+  k8s:
+    state: present
+    apply: yes
+    template: 'redis-parameters-configmap.yaml'
+
+- name: Creating or Deleting Sentinel Parameters ConfigMap
+  k8s:
+    state: "{{ (replicas > 1) | ternary('present', 'absent') })"
+    apply: yes
+    template: 'sentinel-parameters-configmap.yaml'
+
+# it service for new replicas for standalone redis
+# TODO: seperate deletion so we still delete when sentinel values are not defined suddenly or someting
+- name: Creating or Deleting Redis Services for the redis replicas
+  k8s:
+    state: "{{ (item|int < replicas) | ternary('present', 'absent') }}"
+    apply: yes
+    template: 'redis-service.yaml'
+  loop: "{{ range(0, [replicas|int - 1, 0]|max)|list }}"
+
+# Delete the statefulset and recreate it:
+# 1. when scaling from 1 to more - to avoid split brain
+#    standalone does not have sentinel so the next redis that goes up goes as master too and there are 2 masters until the first pod terminates
+# 2. when changing from persistent to cache - because you can't change existing statefulset persistent volumes
+# 3. when scaling from more then 1 to 1 - TODO: change this to be from more then 1 to only 1 cache if possiable
+# 4. when redis port is changed
+# 5. when sentinel port is changed
+# Its needed when the port changed because we don't want to allow split brain and the init-redis-sentinel image does not support diffrent ports in the instances
+- name: Deleting the current statefulset it needed
+  k8s:
+    kind: Statefulset
+    name: "{{ name }}"
+    namespace: "{{ meta.namespace }}"
+    state: absent
+  when: "(status.replicas is defined and ((status.replicas|int == 1 and replicas > 1) or \
+                                          (status.replicas|int > 1 and replicas == 1))) or \
+         (status.persistent is defined and (status.persistent|bool != persistent.apply|bool)) or \
+         (status.port is defined and status.redisport|int != parameters.port|int) or \
+         (status.sentinel.port is defined and status.sentinel.port|int != sentinel.port|int)"
+
+- name: Creating redis StatefulSet
+  k8s:
+    state: present
+    apply: yes
+    template: 'redis-statefulset.yaml'
+
+- name: Setting the needed parameters in status
+  k8s_status:
+    kind: "{{ kind }}"
+    name: "{{ meta.name }}"
+    namespace: "{{ meta.namespace }}"
+    status:
+      replicas: "{{ replicas }}"
+      persistent: "{{ ((replicas > 1) or replicas == 1 and persistent.apply|bool) | ternary('yes', 'no') }}"
+      port: "{{ parameters.port }}"
+      sentinel:
+        port: "{{ sentinel.port }}"
+
+#
+# Backup
+#
+
+- name: Creating Backup pvc 
+  k8s:
+    state: present
+    apply: yes
+    template: 'redis-backup-pvc.yaml'
+  when: "{{ backup.create|bool and ((replicas == 1 and persistence.apply|bool) or (redis.replicas != 1)) }}"
+
+# TODO: seperate deletion so we can delete even if values are not defined
+- name: Creating or Deleting Backup CronJob if needed
+  k8s:
+    state: "{{ (backup.create|bool and ((replicas == 1 and persistence.apply|bool) or (redis.replicas != 1)))|ternary('present', 'absent') }}"
+    apply: yes
+    definition: "{{ lookup('template', 'redis-backup-cronjob.yaml') | from_yaml }}"
+
+# TODO: seperate deletion so we can delete even if values are not defined
+- name: Creating or Deleting restore pod
+  k8s:
+    state: "{{ (backup.restore_pod.create|bool and backup.create|bool) | ternary('present', 'absent') }}"
+    apply: yes
+    definition: "{{ lookup('template', 'restore-deployment.yaml') | from_yaml }}"
+
+#
+# Removing pvcs in the end because we want to remove the pods that are accessing them first
+#
+
+# On Scale down of replicas we remove the unnessary pvcs, without removing the pvc with index 0 when persistent is enabled.
+# For now the replicas will never be 0 (the crd won't allow it) but this is for the futuer where we might add replicas 0.
+- name: Clean unnecessary pvcs
+  k8s:
+    state: absent
+    definition: "{{ lookup('template', 'redis-pvc.yaml') | from_yaml }}"
+  when: (item|int != 0) or (not persistent.apply|bool and redis.replicas <= 1)
+  loop: "{{ range([replicas|int -1, 0]|max, max_replicas - 1)|list }}"
+
+- name: Removing Backup Pvc
+  k8s:
+    state: absent
+    definition: "{{ lookup('template', 'redis-backup-pvc.yaml') | from_yaml }}"
+  when: not (backup.create|bool and ((replicas == 1 and persistence.apply|bool) or (redis.replicas != 1)))

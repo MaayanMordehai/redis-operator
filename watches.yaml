@@ -3,5 +3,5 @@
 - version: v1alpha1
   group: dbs.elmo
   kind: Redis
-  playbook: playbooks/redis.yml
+  role: redis
 #+kubebuilder:scaffold:watch

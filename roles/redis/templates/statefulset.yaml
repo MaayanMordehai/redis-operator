@@ -1,0 +1,181 @@
+---
+apiVersion: {{ statefulset.api_version }}
+kind: StatefulSet
+metadata:
+  name: "{{ statefulset.name }}"
+  namespace: "{{ meta.namespace }}"
+  labels:
+    app: "{{ name }}"
+    cr: "{{ meta.name }}"
+    operator: "{{ kind }}"
+    action: main
+spec:
+  replicas: {{ replicas }}
+  selector:
+    matchLabels:
+      app: "{{ name }}"
+      cr: "{{ meta.name }}"
+      operator: "{{ kind }}"
+      action: main
+  template:
+    metadata:
+      labels:
+        app: "{{ name }}"
+        cr: "{{ meta.name }}"
+        operator: "{{ kind }}"
+        action: main
+    spec:
+      initContainers:
+      - name: init-redis-sentinel
+        image: "{{ images.init_container }}"
+        imagePullPolicy: Always
+        env:
+        - name: REDIS_CONF
+          value: "/configmaps/redis/redis.conf"
+        - name: SHARED_VOLUME
+          value: "/config"
+        - name: REPLICAS
+          value: "{{ replicas }}"
+        - name: NAME
+          value: "{{ statefulset.name }}"
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ secret.name }}
+              key: {{ secret.redis_password_field }}
+        - name: REDIS_PORT
+          value: "{{ parameters.port }}"
+{% if replicas > 1 %}
+        - name: SENTINEL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ secret.name }}
+              key: {{ secret.sentinel_password_field }}
+        - name: SENTINEL_PORT
+          value: "{{ sentinel.port }}"
+        - name: SENTINEL_CONF
+          value: "/configmaps/sentinel/sentinel.conf"
+{% endif %}
+        volumeMounts:
+        - name: config
+          mountPath: "/config"
+        - name: redis-conf
+          mountPath: "/configmaps/redis"
+{% if replicas > 1 %}
+        - name: sentinel-conf
+          mountPath: "/configmaps/sentinel"
+{% endif %}
+        securityContext:
+          runAsUser: 999
+          runAsGroup: 999
+      containers:
+      - name: redis
+        image: "{{ images.redis }}"
+        imagePullPolicy: Always
+{% if replicas > 1 or persistent.apply|bool %}
+        lifecycle:
+          preStop:
+            exec:
+              command: ["/bin/bash", "-c", "/config/prestop.sh"]
+{% endif %}
+        ports:
+          - name: redis
+            containerPort: {{ parameters.port }}
+        resources:
+          requests:
+            cpu: "{{ requests.cpu }}"
+            memory: "{{ requests.memory }}"
+{% if limits.cpu is defined or limits.memory is defined %}
+          limits:
+{% endif %}
+{% if limits.cpu is defined %}
+            cpu: "{{ limits.cpu }}"
+{% endif %}
+{% if limits.memory is defined %}
+            memory: "{{ limits.memory }}"
+{% endif %}
+        env:
+        - name: SHARED_VOLUME
+          value: "/config"
+        - name: REPLICAS
+          value: "{{ replicas }}"
+        - name: NAME
+          value: "{{ statefulset.name }}"
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ secret.name }}
+              key: {{ secret.redis_password_field }}
+        - name: REDIS_PORT
+          value: "{{ parameters.port }}"
+{% if replicas > 1 %}
+        - name: SENTINEL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ secret.name }}
+              key: {{ secret.sentinel_password_field }}
+        - name: SENTINEL_PORT
+          value: "{{ sentinel.port }}"
+{% endif %}
+        volumeMounts:
+        - name: config
+          mountPath: "/config"
+        - name: {{ data_pvc.short_name }}
+          mountPath: "{{ data_location }}"
+        securityContext:
+          runAsUser: 999
+          runAsGroup: 999
+{% if replicas > 1 %}
+      - name: sentinel
+        image: "{{ images.sentinel }}"
+        imagePullPolicy: Always
+        ports:
+          - name: sentinel
+            containerPort: {{ sentinel.port }}
+        resources:
+          requests:
+            cpu: "{{ sentinel.requests.cpu }}"
+            memory: "{{ sentinel.requests.memory }}"
+{% if sentinel.limits.cpu is defined or sentinel.limits.memory is defined %}
+          limits:
+{% endif %}
+{% if sentinel.limits.cpu is defined %}
+            cpu: "{{ sentinel.limits.cpu }}"
+{% endif %}
+{% if sentinel.limits.memory is defined %}
+            memory: "{{ sentinel.limits.memory }}"
+{% endif %}
+        volumeMounts:
+        - name: config
+          mountPath: "/config"
+        securityContext:
+          runAsUser: 999
+          runAsGroup: 999
+{% endif %}
+      volumes:
+      - name: config
+        emptyDir: {}
+      - name: redis-conf
+        configMap:
+          name: {{ redis_conf_configmap.name }}
+{% if replicas > 1 %}
+      - name: sentinel-conf
+        configMap:
+          name: {{ sentinel_conf_configmap.name }}
+{% endif %}
+{% if replicas == 1 and not persistent.apply|bool %}
+      - name: {{ data_pvc.short_name }}
+        emptyDir: {}
+{% endif %}
+{% if replicas > 1 or persistent.apply|bool %}
+  volumeClaimTemplates:
+  - metadata:
+      name: {{ data_pvc.short_name }}
+    spec:
+      accessModes:
+      - ReadWriteMany
+      storageClassName: {{ data_pvc.storage_class }}
+      resources:
+        requests:
+          storage: "50Mi"
+{% endif %}

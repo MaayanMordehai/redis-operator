@@ -9,3 +9,9 @@ project was initialy created by:
 ```bash
 operator-sdk init --plugins=ansible --domain elmo --group=dbs --version=v1alpha1 --kind=Redis --generate-playbook --generate-role
 ```
+
+## Installtion
+
+```bash
+make deploy IMG=<operator-image>
+```

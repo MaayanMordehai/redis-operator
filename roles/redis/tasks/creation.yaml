@@ -1,0 +1,73 @@
+---
+- name: Creating Redis database Secret
+  k8s:
+    state: present
+    apply: yes
+    definition: "{{ lookup('template', 'secret.yaml') | from_yaml }}"
+
+# creating pvc for each redis pod
+# for only one redis there is cache option
+- name: Creating Redis PVC
+  k8s:
+    state: present
+    apply: yes
+    definition: "{{ lookup('template', 'data-pvc.yaml') | from_yaml }}"
+  loop: "{{ range(0, replicas|int)|list }}"
+  when: persistent.apply|bool or replicas > 1
+
+- name: Creating Redis Parameters ConfigMap
+  k8s:
+    state: present
+    apply: yes
+    definition: "{{ lookup('template', 'redis-conf.yaml') | from_yaml }}"
+
+
+- name: Creating Sentinel Parameters ConfigMap
+  k8s:
+    state: present
+    apply: yes
+    definition: "{{ lookup('template', 'sentinel-conf.yaml') | from_yaml }}"
+  when: replicas > 1
+
+
+- name: Creating Redis Services for the redis replicas
+  k8s:
+    state: present
+    apply: yes
+    definition: "{{ lookup('template', 'service.yaml') | from_yaml }}"
+  loop: "{{ range(0, replicas|int)|list }}"
+
+- name: Creating redis StatefulSet
+  k8s:
+    state: present
+    apply: yes
+    definition: "{{ lookup('template', 'statefulset.yaml') | from_yaml }}"
+
+- name: Creating Backup pvc
+  k8s:
+    state: present
+    apply: yes
+    definition: "{{ lookup('template', 'backup-pvc.yaml') | from_yaml }}"
+  when: 
+    - backup.create|bool
+    - (replicas == 1 and persistence.apply|bool) or (redis.replicas != 1)
+
+- name: Creating Backup CronJob
+  k8s:
+    state: present
+    apply: yes
+    template: 'backup-cronjob.yaml'
+    definition: "{{ lookup('template', 'backup-cronjob.yaml') | from_yaml }}"
+  when: 
+    - backup.create|bool 
+    - (replicas == 1 and persistence.apply|bool) or redis.replicas != 1
+
+- name: Creating restore pod
+  k8s:
+    state: present
+    apply: yes
+    definition: "{{ lookup('template', 'restore-deployment.yaml') | from_yaml }}"
+  when:
+    - backup.create|bool
+    - backup.restore_pod.create|bool
+# TODO: think if create restore pod when redis cache ??

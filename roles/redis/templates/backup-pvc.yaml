@@ -1,0 +1,20 @@
+---
+apiVersion: {{ backup_pvc.api_version }}
+kind: PersistentVolumeClaim
+metadata:
+  name: "{{ backup_pvc.name }}"
+  namespace: "{{ meta.namespace }}"
+  labels:
+    app: "{{ name }}"
+    cr: "{{ meta.name }}"
+    operator: "{{ kind }}"
+    action: backup
+  finalizers:
+  - kubernetes.io/pvc-protection
+spec:
+  storageClassName: "{{ backup_pvc.storage_class|default(omit) }}"
+  accessModes:
+  - ReadWriteMany
+  resources:
+    requests:
+      storage: "{{ backup.storage_size }}"

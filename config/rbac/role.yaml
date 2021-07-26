@@ -14,6 +14,9 @@ rules:
       - pods
       - pods/exec
       - pods/log
+      - services
+      - persistentvolumeclaims
+      - configmaps
     verbs:
       - create
       - delete
@@ -23,12 +26,25 @@ rules:
       - update
       - watch
   - apiGroups:
+      - extentions
       - apps
     resources:
       - deployments
       - daemonsets
       - replicasets
       - statefulsets
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - batch
+    resources:
+      - cronjobs
     verbs:
       - create
       - delete

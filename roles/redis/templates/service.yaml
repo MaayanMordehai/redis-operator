@@ -1,0 +1,29 @@
+---
+apiVersion: {{ service.api_version }}
+kind: Service
+metadata:
+  name: "{{ service.name }}-{{ item }}"
+  namespace: "{{ meta.namespace }}"
+  labels:
+    app: "{{ name }}"
+    cr: "{{ meta.name }}"
+    operator: "{{ kind }}"
+    action: main
+spec:
+  ports:
+    - name: redis
+      port: {{ parameters.port }}
+      protocol: TCP
+      targetPort: {{ parameters.port }}
+{% if replicas > 1  %}
+    - name: sentinel
+      port: {{ sentinel.port }}
+      protocol: TCP
+      targetPort: {{ sentinel.port }}
+{% endif %}
+  selector:
+    app: "{{ name }}"
+    cr: "{{ meta.name }}"
+    operator: redis
+    action: main
+    statfulset.kubernetes.io/pod-name: "{{ statefulset.name }}-{{ item }}"

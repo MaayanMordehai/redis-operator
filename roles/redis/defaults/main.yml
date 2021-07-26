@@ -1,2 +1,60 @@
 ---
-# defaults file for Redis
+max_replicas: 7
+data_location: "/var/lib/redis" 
+
+cr: "{{ _dbs_elmo_redis }}"
+meta: "{{ cr.metadata }}"
+api_version: "{{ cr.apiVersion }}"
+kind: "{{ cr.kind }}"
+status: "{{ cr.status | default({}) }}"
+
+# TODO: put image and sentinel.image in the crd
+images:
+  backup: "maayanmord/redis-backup:{{ version }}"
+  init_container: "maayanmord/init-redis-sentinel:{{ version }}"
+  redis: "{{ image|default('maayanmord/redis') }}:{{ version }}"
+  sentinel: "{{ sentinel.image|default('maayanmord/sentinel') }}:{{ version }}"
+
+# vars for templates
+secret:
+  name: "{{ name }}"
+  redis_password_field: "redisPassword"
+  sentinel_password_field: "sentinelPassword"
+  api_version: v1
+
+statefulset:
+  name: "{{ name }}"
+  api_version: apps/v1
+
+data_pvc:
+  short_name: "data"
+  name: "data-{{ name }}"
+  storage_class: "{{ persistent.storage_class|default(omit) }}" # TODO: add this to crd ?
+  api_version: v1
+
+backup_cronjob:
+  name: "{{ name }}-backup"
+  backup_from_pod: "{{ statefulset.name }}-0"
+  backup_from_pod_pvc: "{{ data_pvc.name }}-0"
+  api_version: v1beta1
+
+backup_pvc:
+  name: "{{ name }}-backup"
+  storage_class: "{{ backup.storage_class|default(omit) }}" #TODO: add this to crd ? 
+  api_version: v1
+
+redis_conf_configmap:
+  name: "{{ name }}-redis-conf"
+  api_version: v1
+
+sentinel_conf_configmap:
+  name: "{{ name }}-sentinel-conf"
+  api_version: v1
+
+service:
+  name: "{{ statefulset.name }}"
+  api_version: v1
+
+restore_deployment:
+  name: "{{ statefulset.name }}-restore"
+  api_version: apps/v1

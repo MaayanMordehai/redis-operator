@@ -1,11 +1,12 @@
-Role Name
+Redis
 =========
 
-A brief description of the role goes here.
+This role is part of redis-operator. it deploys redis cache/persistent standalone/replicas (with sentinel) on k8s environment.
 
 Requirements
 ------------
 
+This uses the images in the [redis-images repository](https://github.com/MaayanMordehai/redis-images)
 Any pre-requisites that may not be covered by Ansible itself or the role should be mentioned here. For instance,
 if the role uses the EC2 module, it may be a good idea to mention in this section that the boto package is required.
 

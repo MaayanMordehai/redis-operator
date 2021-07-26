@@ -1,0 +1,63 @@
+apiVersion: {{ restore_deployment.api_version }}
+kind: Deployment
+metadata:
+  name: "{{ restore_deployment.name }}"
+  namespace: "{{ meta.namespace }}"
+  labels:
+    app: "{{ name }}"
+    cr: "{{ meta.name }}"
+    operator: "{{ kind }}"
+    action: restore
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: "{{ name }}"
+      cr: "{{ meta.name }}"
+      operator: "{{ kind }}"
+      action: restore
+  template:
+    metadata:
+      labels:
+        app: "{{ name }}"
+        cr: "{{ meta.name }}"
+        operator: "{{ kind }}"
+        action: restore
+    spec:
+      containers:
+      - name: "{{ restore_deployment.name }}"
+        image: "{{ images.redis }}"
+        command: ["tail", "-f", "/dev/null"]
+        imagePullPolicy: Always
+        resources:
+          requests:
+            cpu: {{ backup.restore_pod.requests.cpu }}
+            memory: {{ backup.restore_pods.requests.memory }}
+{% if backup.restore_pod.limits.cpu is defined or backup.restore_pod.limits.memory is defined %}
+          limits:
+{% endif %}
+{% if backup.restore_pod.limits.cpu is defined %}
+            cpu: {{ backup.restore_pod.limits.cpu }}
+{% endif %}
+{% if backup.restore_pod.limits.memory is defined %}
+            memory: {{ backup.restore_pod.limits.memory }}
+{% endif %}
+        volumwMounts:
+        - name: {{ backup_pvc.name }}
+          mountPath: "/backups"
+{% for pvc in backup.restore_pod.map_pvcs %}
+        - name: {{ pvc }}
+          mountPath: "/{{ pvc }}"
+{% endfor %}
+        securityContext:
+          runAsUser: 999
+          runAsGroup: 999
+      volumes:
+      - name: {{ backup_pvc.name }}
+        persistentVolumeClaim:
+          claimName: {{ backup_pvc.name }}
+{% for pvc in backup.restpre_pod.map_pvcs %}
+      - name: {{ pvc }}
+        persistentVolumeClaim:
+          claimName: {{ pvc }}
+{% endfor %}

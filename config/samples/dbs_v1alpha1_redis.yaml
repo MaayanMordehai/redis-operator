@@ -2,6 +2,23 @@ apiVersion: dbs.elmo/v1alpha1
 kind: Redis
 metadata:
   name: redis-sample
+  namespace: default
 spec:
-  # Add fields here
-  foo: bar
+  name: sony5
+  replicas: 3
+  version: "6.2"
+  defaultUserPassword: Aa123456!
+  persistent:
+    apply: yes
+    storageSize: 100M
+    storageClass: manual
+  parameters:
+    maxmemory: 5gb
+  requests:
+    cpu: 500m
+    memory: 50Mi
+  sentinel:
+    password: Aa123456!
+    requests:
+      cpu: 100m
+      memory: 50Mi
