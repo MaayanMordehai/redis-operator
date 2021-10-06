@@ -24,6 +24,6 @@ spec:
   selector:
     app: "{{ name }}"
     cr: "{{ meta.name }}"
-    operator: redis
+    operator: "{{ kind }}"
     action: main
-    statfulset.kubernetes.io/pod-name: "{{ statefulset.name }}-{{ item }}"
+    statefulset.kubernetes.io/pod-name: "{{ statefulset.name }}-{{ item }}"

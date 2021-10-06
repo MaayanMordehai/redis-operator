@@ -2,7 +2,7 @@
 - name: Deleting Sentinel Parameters ConfigMap
   k8s:
     state: absent
-    kind: Configmap
+    kind: ConfigMap
     name: "{{ sentinel_conf_configmap.name }}"
     namespace: "{{ meta.namespace }}"
     api_version: "{{ sentinel_conf_configmap.api_version }}"
@@ -27,7 +27,7 @@
 # Its needed when the port changed because we don't want to allow split brain and the init-redis-sentinel image does not support diffrent ports in the instances
 - name: Deleting the current statefulset
   k8s:
-    kind: Statefulset
+    kind: StatefulSet
     name: "{{ statefulset.name }}"
     namespace: "{{ meta.namespace }}"
     api_version: "{{ statefulset.api_version }}"

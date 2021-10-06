@@ -244,6 +244,7 @@ spec:
                     - mapPvcs
                     default:
                       create: no
+                      mapPvcs: []
                     properties:
                       create:
                         description: Do you want to create restore pod? default false.
